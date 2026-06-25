@@ -1,0 +1,26 @@
+# Code-interpreter tool backed by SandboxFusion, for verl/SGLang multi-turn rollout.
+# Referenced by tests/e2e/run_gsm8k_fsdp_sgl_multiturn_sf_tool.sh and the SOD AIME-TIR
+# benchmark (recipe/sod). The model emits a `code_interpreter` tool call with Python; the
+# SandboxFusion server executes it and the stdout/result is fed back as an observation.
+# Set sandbox_fusion_url to your SandboxFusion endpoint (…/run_code).
+tools:
+  - class_name: "verl.tools.sandbox_fusion_tools.SandboxFusionTool"
+    config:
+      sandbox_fusion_url: "http://localhost:8080/run_code"
+      num_workers: 64
+      rate_limit: 64
+      default_timeout: 30
+      default_language: "python"
+      enable_global_rate_limit: true
+    tool_schema:
+      type: "function"
+      function:
+        name: "code_interpreter"
+        description: "A Python code interpreter. Send Python source in `code`; returns its stdout/stderr. Use it to compute and verify the final numeric answer before boxing it."
+        parameters:
+          type: "object"
+          properties:
+            code:
+              type: "string"
+              description: "The Python code to execute."
+          required: ["code"]
