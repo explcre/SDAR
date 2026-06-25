@@ -61,11 +61,16 @@ def convert(src_dir: str, out_dir: str) -> None:
         acol = "Answer" if "Answer" in df.columns else "answer"
         for idx, r in df.reset_index(drop=True).iterrows():
             gt = str(r[acol]).strip()
+            prompt_text = build_prompt(str(r[pcol]))
             rows.append({
                 "data_source": data_source,
-                "prompt": [{"role": "user", "content": build_prompt(str(r[pcol]))}],
+                "prompt": [{"role": "user", "content": prompt_text}],
                 "ability": "math",
                 "reward_model": {"style": "rule", "ground_truth": gt},
+                # env_kwargs drives SDAR's agentic rollout (agent_system math_tool env):
+                # reset() reads question(=the full SOD prompt)+ground_truth+data_source.
+                # Mirrors examples/data_preprocess/preprocess_search_r1_dataset.py.
+                "env_kwargs": {"ground_truth": gt, "question": prompt_text, "data_source": data_source},
                 "extra_info": {
                     "split": "test",
                     "index": int(idx),

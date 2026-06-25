@@ -18,29 +18,30 @@ eval (`youngzhong/SOD-1.7B`, repo `YoungZ365/SOD` recipe/demystify).
 - `../../examples/sglang_multiturn/config/tool_config/sandbox_fusion_tool_config.yaml` —
   `code_interpreter` tool backed by `verl.tools.sandbox_fusion_tools.SandboxFusionTool`.
 
-**NOT yet runnable end-to-end (architecture finding from the audit):**
-SDAR's trainers (`verl/trainer/main_ppo.py`, `recipe/dapo`, …) route **all** multi-turn
-rollout — *including tool use* — through an **`agent_system` environment**:
-`_validate()` (verl/trainer/ppo/ray_trainer.py:749) generates via
-`self.traj_collector.multi_turn_loop(envs=…)`, and `multi_turn_loop`
-(agent_system/multi_turn_rollout/rollout_loop.py:304) **requires** an `EnvironmentManagerBase`
-(`envs.reset()/step()`). There is **no stock-verl pure-tool eval path** in this fork (the
-sglang tool configs the e2e scripts reference don't exist; `reward_manager` outside `episode`
-is rejected by `main_ppo`). So `run_sod_eval.sh` as written (stock-verl flags) will not run here.
+**The `math_tool` agent environment (the native SDAR integration — implemented + CPU-tested):**
+Architecture finding: SDAR routes **all** multi-turn rollout — *including tool use* — through an
+**`agent_system` environment** (`_validate()` → `traj_collector.multi_turn_loop(envs=…)`, which
+*requires* an `EnvironmentManagerBase`); there's no stock-verl pure-tool path, and `main_ppo`
+only accepts `reward_manager=episode`. So the SOD AIME-TIR eval is added as a proper env:
+- `agent_system/environments/env_package/math_tool/{envs.py,projection.py,__init__.py}` — a
+  per-sample `MathToolEnv` (+ threaded vectorized backend, mirroring the `search` env): `reset()`
+  presents SOD's exact AIME prompt (from `env_kwargs.question`); `step()` parses a hermes
+  `<tool_call>{...code_interpreter...}` (tolerant `json.loads(strict=False)`), runs the Python via
+  verl's `_process_single_case` (the SandboxFusion helper) and returns `<tool_response>…`; a final
+  `\boxed{}` is scored by `recipe/sod/reward.py` (math_dapo strict-box) → `won`.
+- `MathToolEnvironmentManager` + `MathToolMemory` in `env_manager.py`/`memory.py` (multi-turn
+  transcript), a `make_envs` branch for `env.env_name=math_tool`, and an `env.math_tool` config
+  block in `ppo_trainer.yaml`. `success_evaluator` reports avg@N accuracy per `data_source`.
+- CPU test: `test_math_tool_env.py` (reset/boxed-scoring/tool-call/projection/vectorized — passes,
+  sandbox mocked). Reward path uses `reward_manager=episode` (env scores internally).
 
-## To make it run faithfully: add an AIME-TIR environment
-
-The SDAR-native way is a new `agent_system` environment, e.g. `MathToolEnvironmentManager`:
-- `reset()` → present the AIME problem (the prompt above) as the first observation.
-- `step(text_actions)` → detect `code_interpreter` tool calls, execute via the existing
-  `SandboxFusionTool`, return stdout as the next observation; terminate on a boxed answer or
-  `max_turns`.
-- `success_evaluator()` → score the final boxed answer with `recipe/sod/reward.py`
-  (math_dapo strict-box) → avg@32.
-- register in `agent_system/environments/env_manager.py::make_envs` + a `*_projection`.
-Then run via `verl.trainer.main_ppo` with `env.env_name=math_tool`, `val_only=True`,
-`val_kwargs.n=32 temperature=1.0 top_p=0.6 top_k=20`, `multi_turn.enable=True`,
-`tool_config_path=…/sandbox_fusion_tool_config.yaml`.
+**Run (GPU + a SandboxFusion server):**
+```
+python recipe/sod/data_preprocess_sod.py --src_dir <Open-AgentRL-Eval> --out_dir <DATA_DIR>
+MODEL_PATH=<ckpt> DATA_DIR=<DATA_DIR> SANDBOX_URL=http://localhost:8080/run_code \
+  bash recipe/sod/run_sod_eval.sh   # val_only avg@32, env.env_name=math_tool, top_k=20
+```
+avg@32 lands in `val-core/.../aime2024 & aime2025 success_rate`. (Pending: a GPU+sandbox smoke run.)
 
 ## Faithfulness caveats (vs SOD)
 - SOD used **vllm + hermes** tool format; SDAR uses **sglang + chatml** (unavoidable here).

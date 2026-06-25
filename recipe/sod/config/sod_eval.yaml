@@ -1,0 +1,38 @@
+# Copyright 2026 — SOD benchmark (AIME-TIR) integration for SDAR. Apache-2.0.
+#
+# Hydra config for the SOD AIME tool-integrated-reasoning (TIR) eval through
+# SDAR's NATIVE agentic rollout (agent_system -> make_envs -> math_tool env).
+#
+# It extends verl's ppo_trainer config (which main_ppo loads) and overrides only
+# the `env:` block so the agent loop drives the math_tool environment. Everything
+# else (model, rollout backend, data, val sampling) is set on the CLI by
+# recipe/sod/run_sod_eval.sh (or hydra overrides).
+#
+# To use this file directly:
+#   python -m verl.trainer.main_ppo --config-path recipe/sod/config --config-name sod_eval ...
+# (run_sod_eval.sh instead overrides verl/trainer/config/ppo_trainer.yaml on the
+#  CLI, which is equivalent; this file documents the required env.* keys.)
+defaults:
+  - ppo_trainer        # inherit all of verl/trainer/config/ppo_trainer.yaml
+  - _self_             # then apply the overrides below
+
+env:
+  # selects the math_tool branch in agent_system.environments.make_envs
+  env_name: math_tool
+  seed: 1
+  # max agentic turns per problem (model action -> tool response, repeated)
+  max_steps: 16
+  # how many prior (action, tool_response) turns to fold into each prompt
+  history_length: 8
+  resources_per_worker:
+    num_cpus: 0.2
+    num_gpus: 0
+  rollout:
+    # group size G for GRPO-style avg@G (verl keeps actor_rollout_ref.rollout.n==1
+    # and realizes the group via env.rollout.n). For avg@32 set this to 32 on val.
+    n: 1
+  # math_tool-specific knobs consumed by build_math_tool_envs / MathToolEnv
+  math_tool:
+    sandbox_fusion_url: "http://localhost:8080/run_code"
+    timeout: 30
+    language: python
