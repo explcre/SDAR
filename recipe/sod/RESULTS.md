@@ -23,7 +23,22 @@ Smoke run (Qwen2.5-3B-Instruct, 4 problems, avg@2), voyager/laniakea:
 - To get a number faster: bound the degenerate generations (`MAX_RESP=8192 MAX_TURNS=8`) and/or
   fewer problems — trades a little faithfulness for tractable wall-clock.
 
-## SOD-1.7B full run (2026-07-02) — TWO problems found (honest)
+## ROOT CAUSE + FIX (2026-07-02) — it was `enable_thinking`, NOT tool-format
+
+CORRECTION: the "tool-format mismatch" conclusion below was WRONG. Real root cause:
+SOD-1.7B (Qwen3) was fine-tuned with **thinking mode OFF** (chat_template.jinja appends an empty
+`<think>\n\n</think>\n\n` block when `enable_thinking=False`, then plain reasoning). The
+standalone SOD eval passed `enable_thinking=False`; SDAR's `apply_chat_template` defaulted it ON
+-> the model was out-of-distribution -> emitted `<|im_start|>` control-token garbage -> ~14/6 AND
+the multi_turn_loop "hangs" (garbage filled the 20480-token budget). The Qwen2.5-3B smoke didn't
+catch it (Qwen2.5 has no thinking mode). rope/config was ruled out (transformers 4.57.3 reads
+rope_theta=1000000 correctly). tool-schema was ruled out (standalone had none either).
+
+FIX (config-level, no code change): `+data.apply_chat_template_kwargs.enable_thinking=False`.
+CONFIRMED (smoke, SOD-1.7B avg@2, 4 problems): responses coherent ("I'll solve this step by
+step."), val/aime2024=0.5, val/aime2025=1.0, 0 crashes. Full faithful sharded run relaunched.
+
+## SOD-1.7B full run (2026-07-02) — TWO problems found (SUPERSEDED by the fix above)
 
 Sharded run (6 shards × 10 problems, faithful top_k=20/20480/16). Only 2/6 shards produced
 scores; **4/6 HUNG for 12–14 h** (no log output; `multi_turn_loop` appears to deadlock/stall on
