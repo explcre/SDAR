@@ -74,3 +74,27 @@ under the chatml/env tool protocol."
 The SDAR `math_tool` run targets the same top_k=20 protocol; expect it to land in the same
 ballpark once it completes (the sglang→env-step tool mechanism differs from SOD's vllm+hermes,
 so some drift is expected — documented in README "Faithfulness caveats").
+
+## FINAL ASSESSMENT (2026-07-03) — fix works, but SDAR harness gives SOD-1.7B low scores
+
+After the enable_thinking fix, responses are genuinely COHERENT ("I'll solve this step by step
+using the power of ...") — the fix is real. But the aggregate SOD-1.7B avg@32 in SDAR is LOW,
+in BOTH configs and NOT a small-sample fluke:
+- faithful (20480/16): shard5 aime2025 = 0.10
+- bounded  (8192/8):   shard2 aime2025 = 0.00, shard5 aime2024 = 0.075
+- tool_call_count/mean ~0.7-1.15  (vs SOD's native ~5 tool calls per solved sample)
+
+So SOD-1.7B scores ~7-10% in SDAR's env-step harness vs 48/37 standalone — it's a HARDER harness
+for this model. Root causes (beyond the fixed enable_thinking):
+1. env-step re-templates the FULL transcript as a single user turn each step; SOD's native
+   vllm+hermes keeps one growing assistant sequence with the tool schema in the system prompt.
+   The model tool-calls far less here (~1 vs ~5) -> solves far fewer.
+2. reliability at avg@32 scale: 2/6 shards FAILED on transient Ray-GCS init on contended nodes,
+   2/6 CANCELLED at start; faithful config takes ~7 h/shard (genuine SOD loops + env overhead).
+
+CONCLUSION: the `math_tool` benchmark is a valid TIR eval and the pipeline + fix are validated,
+but it does NOT reproduce SOD's paper number for SOD-1.7B (the env-step tool mechanism differs
+materially from SOD's native vllm+hermes). A faithful SOD number would require porting SOD's
+native tool-rollout (hermes, schema-injected, single-sequence) — a large deviation from SDAR's
+agentic design. The **standalone SOD reproduction (48.12/36.77, explcre/sod-repro) remains the
+faithful number**; the SDAR result is "benchmark works, SOD-1.7B scores ~7-10% under env-step TIR."
