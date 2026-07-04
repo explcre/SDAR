@@ -98,3 +98,29 @@ materially from SOD's native vllm+hermes). A faithful SOD number would require p
 native tool-rollout (hermes, schema-injected, single-sequence) — a large deviation from SDAR's
 agentic design. The **standalone SOD reproduction (48.12/36.77, explcre/sod-repro) remains the
 faithful number**; the SDAR result is "benchmark works, SOD-1.7B scores ~7-10% under env-step TIR."
+
+## RESULT with BOTH fixes (2026-07-04) — 24.6/23.5, up 3x from broken, still ~half standalone
+
+Both fixes applied: `enable_thinking=False` + code_interpreter tool-SCHEMA injection (hermes
+`<tools>` system block). Sharded avg@32, all 60 problems, BOUNDED (MAX_RESP=8192/MAX_TURNS=8):
+
+| | AIME2024 | AIME2025 |
+|---|---|---|
+| SDAR broken (before fixes) | ~7 | ~10 |
+| **SDAR both fixes (bounded avg@32)** | **24.60** | **23.54** |
+| standalone SOD top_k=20 | 48.12 | 36.77 |
+| paper | 50.83 | 41.72 |
+
+Per-shard (5 problems each, high variance): 2024=[13.8,41.8,60.0,4.8,21.2,6.0], 2025=[55.6,26.9,0,33.8,15,10].
+
+So the two config fixes are REAL and large (7->24.6, ~3x). Residual gap to standalone (48/37):
+1. **tool_call_count ~1 vs SOD-native ~5** — even with the schema injected, the env-step loop
+   (re-prompt whole transcript each turn) yields far fewer tool calls than SOD's single-sequence
+   vllm+hermes -> less arithmetic verification -> ~half the accuracy.
+2. **bounded MAX_RESP=8192/MAX_TURNS=8** vs SOD's faithful 20480/16 — cuts long reasoning; a
+   faithful run (now that gen is coherent, the earlier hangs should be gone) may recover some,
+   but ~7 h/shard.
+
+VERDICT: the SDAR `math_tool` benchmark now evaluates SOD-1.7B sanely (24.6/23.5), the two root
+causes (enable_thinking, tool-schema) are found+fixed, but the env-step tool mechanism inherently
+gives ~half of SOD's native harness. Standalone 48/37 remains the faithful paper-comparison number.
