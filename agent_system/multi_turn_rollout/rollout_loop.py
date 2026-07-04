@@ -67,8 +67,24 @@ class TrajectoryCollector:
 
         raw_prompt = gen_batch.non_tensor_batch['raw_prompt'][item]
         data_source = gen_batch.non_tensor_batch['data_source'][item]
-        apply_chat_template_kwargs = self.config.data.get("apply_chat_template_kwargs", {})
-        
+        apply_chat_template_kwargs = dict(self.config.data.get("apply_chat_template_kwargs", {}))
+        # SOD math_tool: inject the code_interpreter tool SCHEMA into the system prompt (hermes format
+        # the Qwen3/SOD model was trained on). Without it the model tool-calls far less (~1 vs ~5) and
+        # underperforms. Flag-gated (default off) so other agentic envs are unaffected.
+        if self.config.data.get("inject_code_interpreter_tool", False) and "tools" not in apply_chat_template_kwargs:
+            apply_chat_template_kwargs["tools"] = [{
+                "type": "function",
+                "function": {
+                    "name": "code_interpreter",
+                    "description": "A Python code interpreter. Send Python source in `code`; returns its stdout. Use it to compute and verify the final numeric answer before boxing it.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"code": {"type": "string", "description": "The Python code to execute."}},
+                        "required": ["code"],
+                    },
+                },
+            }]
+
         # Get observation components
         obs_texts = obs.get('text', None)
         obs_images = obs.get('image', None)
