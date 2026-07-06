@@ -124,3 +124,30 @@ So the two config fixes are REAL and large (7->24.6, ~3x). Residual gap to stand
 VERDICT: the SDAR `math_tool` benchmark now evaluates SOD-1.7B sanely (24.6/23.5), the two root
 causes (enable_thinking, tool-schema) are found+fixed, but the env-step tool mechanism inherently
 gives ~half of SOD's native harness. Standalone 48/37 remains the faithful paper-comparison number.
+
+## ROOT-CAUSE DIAGNOSIS of the eval gap (2026-07-04) — flat-user vs native hermes multi-turn
+
+Q: eval is on the OPEN-SOURCED youngzhong/SOD-1.7B (same weights both harnesses) — why does SDAR
+get 24.6/23.5 vs standalone 48/37? A: NOT the ckpt. The SDAR env re-serializes the whole
+conversation into ONE narrated `role:user` message every turn, instead of the native hermes
+multi-turn (role:assistant for the model's own turns, role:tool for tool results) SOD-1.7B was
+trained on.
+
+Evidence in code:
+- env_manager.py MathToolEnvironmentManager.build_text_obs (L181-209) formats each turn as
+  MATH_TOOL_TEMPLATE(task, memory_context, step_count) -> a SINGLE string.
+- math_tool.py MATH_TOOL_TEMPLATE (L18-25): "{problem} Prior to this step you have already taken
+  N step(s). Below is the interaction history ... {memory_context} Now continue ..." — the whole
+  transcript as PROSE inside one user turn.
+- rollout_loop.py preprocess_single_sample (L106-124): chat = [{"role":"user","content":obs_text}]
+  — always one user message, add_generation_prompt=True, re-templated fresh each step.
+- rollout_loop.py L398: skip_special_tokens=True strips structural tokens before the action is stored.
+
+Four OOD breaks vs SOD-1.7B training: (1) model's own prior turns quoted back as USER text, never
+role:assistant -> it can't continue its own reasoning chain; (2) prose narration not in training
+distribution; (3) tool results not role:tool/inline <tool_response>; (4) special tokens stripped.
+=> model won't chain tool calls (tool_call ~1 vs ~5) => ~half the score. Matches the exact 24.6 vs 48.
+
+FIX (in progress): accumulate a real hermes message list (user problem -> assistant raw-gen ->
+tool response -> assistant ...) and apply_chat_template on the FULL list; flag-gated so other
+SDAR envs are unaffected. Expected to recover toward 48/37 if the diagnosis is correct.
