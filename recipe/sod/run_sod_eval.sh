@@ -55,6 +55,7 @@ python3 -m verl.trainer.main_ppo \
     data.truncation=${TRUNCATION:-left} \
     +data.apply_chat_template_kwargs.enable_thinking=False \
     +data.inject_code_interpreter_tool=True \
+    +data.native_multiturn_chat=${NATIVE_MULTITURN:-True} \
     actor_rollout_ref.model.path="$MODEL_PATH" \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=${MICRO_BSZ:-8} \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=${MICRO_BSZ:-8} \

@@ -109,12 +109,20 @@ class TrajectoryCollector:
         else:
             print(f"Warning: No text observation found!")
 
-        
-        chat = np.array([{
-            "content": obs_content,
-            "role": "user",
-        }])
-        
+        # Native hermes multi-turn: if the env supplied a role-tagged message list for this
+        # sample (user problem -> assistant gen -> tool response -> ...), template THAT so the
+        # model sees the conversation format it was trained on. Otherwise fall back to the flat
+        # single-`user` message (unchanged behaviour for all other SDAR envs).
+        obs_messages = obs.get('messages', None) if isinstance(obs, dict) else None
+        msgs_item = obs_messages[item] if obs_messages is not None else None
+        if msgs_item is not None:
+            chat = list(msgs_item)
+        else:
+            chat = np.array([{
+                "content": obs_content,
+                "role": "user",
+            }])
+
         # Apply chat template
         prompt_with_chat_template = self.tokenizer.apply_chat_template(
             chat,

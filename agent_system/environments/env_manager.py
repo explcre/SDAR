@@ -15,6 +15,7 @@
 
 from typing import List, Tuple, Dict, Union, Any
 from collections import defaultdict
+import re
 import torch
 import numpy as np
 from functools import partial
@@ -143,18 +144,40 @@ class MathToolEnvironmentManager(EnvironmentManagerBase):
 
     def __init__(self, envs, projection_f, config):
         self.memory = MathToolMemory()
+        # Native-hermes multi-turn: when on, we also carry a real role-tagged message
+        # list (user problem -> assistant generation -> tool response -> ...) so SOD-1.7B
+        # sees the conversation format it was TRAINED on, instead of the whole transcript
+        # flattened into one narrated `user` message (which is heavily OOD -> tool_call ~1
+        # vs ~5 -> ~half the score). Flag-gated so other envs are unaffected.
+        self._native_multiturn = bool(config.data.get("native_multiturn_chat", False)) \
+            if hasattr(config, "data") else False
+        self._chat_msgs = None
         super().__init__(envs, projection_f, config)
+
+    @staticmethod
+    def _raw_tool_result(obs: str) -> str:
+        """Strip the outer ``<tool_response>..</tool_response>`` the env adds, so the chat
+        template (which re-adds it for role='tool') doesn't double-wrap it."""
+        if not isinstance(obs, str):
+            return ""
+        m = re.search(r"<tool_response>\s*(.*?)\s*</tool_response>", obs, re.DOTALL | re.IGNORECASE)
+        return m.group(1) if m else obs
 
     def reset(self, kwargs) -> Tuple[Dict[str, Any], List[Dict]]:
         obs, infos = self.envs.reset(kwargs=kwargs)
         self.tasks = obs
         self.memory.reset(batch_size=len(obs))
+        if self._native_multiturn:
+            # one clean `user` turn = the faithful SOD problem (same as standalone eval)
+            self._chat_msgs = [[{"role": "user", "content": obs[i]}] for i in range(len(obs))]
 
         observations = {
             "text": self.build_text_obs(obs, init=True),
             "image": None,
             "anchor": obs.copy(),
         }
+        if self._native_multiturn:
+            observations["messages"] = [list(m) for m in self._chat_msgs]
         return observations, infos
 
     def step(self, text_actions: List[str]):
@@ -164,12 +187,22 @@ class MathToolEnvironmentManager(EnvironmentManagerBase):
             "action": actions,
             "tool_response": next_obs,
         })
+        if self._native_multiturn:
+            # append the model's RAW turn as role=assistant (keeps its reasoning + <tool_call>),
+            # and the tool stdout as role=tool (only when a tool actually ran) — native hermes.
+            for i in range(len(self._chat_msgs)):
+                self._chat_msgs[i].append({"role": "assistant", "content": text_actions[i]})
+                resp = next_obs[i] if i < len(next_obs) else ""
+                if isinstance(resp, str) and "<tool_response>" in resp.lower():
+                    self._chat_msgs[i].append({"role": "tool", "content": self._raw_tool_result(resp)})
 
         next_observations = {
             "text": self.build_text_obs(next_obs),
             "image": None,
             "anchor": next_obs.copy(),
         }
+        if self._native_multiturn:
+            next_observations["messages"] = [list(m) for m in self._chat_msgs]
 
         for i, info in enumerate(infos):
             info["is_action_valid"] = to_numpy(valids[i])
