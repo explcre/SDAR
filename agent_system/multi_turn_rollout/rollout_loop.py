@@ -116,7 +116,9 @@ class TrajectoryCollector:
         obs_messages = obs.get('messages', None) if isinstance(obs, dict) else None
         msgs_item = obs_messages[item] if obs_messages is not None else None
         if msgs_item is not None:
-            chat = list(msgs_item)
+            # object array of role-tagged dicts: apply_chat_template iterates it, and the
+            # downstream `chat.tolist()` (raw_prompt) works just like the flat path below.
+            chat = np.array(list(msgs_item), dtype=object)
         else:
             chat = np.array([{
                 "content": obs_content,
