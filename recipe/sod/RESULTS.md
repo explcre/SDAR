@@ -151,3 +151,19 @@ distribution; (3) tool results not role:tool/inline <tool_response>; (4) special
 FIX (in progress): accumulate a real hermes message list (user problem -> assistant raw-gen ->
 tool response -> assistant ...) and apply_chat_template on the FULL list; flag-gated so other
 SDAR envs are unaffected. Expected to recover toward 48/37 if the diagnosis is correct.
+
+## NATIVE-MULTITURN FIX — smoke CONFIRMS the diagnosis (2026-07-04)
+
+shard0 (same 10 problems), avg@8, bounded 8192/8, SOD-1.7B. Old flat-narration vs native hermes:
+
+| metric | old (flat user msg) | NATIVE hermes multi-turn |
+|---|---|---|
+| tool_call_count/mean | ~1 | **2.3** (climbing toward SOD-native ~5) |
+| aime2024 | 13.8 | **37.5** |
+| aime2025 | 55.6 | **87.5** |
+| overall | ~34.7 | **62.5** |
+
+Diagnosis CONFIRMED: the flat-user re-serialization was the cause. Native hermes (role:assistant
+for the model's own turns + role:tool results) roughly doubles the score and lifts tool-calling.
+Two integration bugs fixed en route (N_PROBLEMS must equal data problem-count; chat must be
+np.array(dtype=object) for downstream .tolist()). Launching full faithful (20480/16) avg@32.

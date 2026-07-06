@@ -28,7 +28,7 @@ for i in $(seq 0 $((K-1))); do
   JID=$(sbatch --parsable --job-name=sdar-shard${i} --gres=gpu:1 --nodelist="$N" \
     --cpus-per-task=8 --mem=64000M \
     --output="$out" --error="$LOGD/sdar-shard${i}.err" \
-    --export=ALL,MODEL_PATH=$MODEL,DATA_DIR=$SHARDROOT/shard${i},N_PROBLEMS=$NP,VAL_N=$VAL_N,MAX_PROMPT=$MAX_PROMPT,MAX_RESP=$MAX_RESP,MAX_TURNS=$MAX_TURNS,MAX_BATCHED=$MAX_BATCHED,HIST_LEN=8,TRUNCATION=left \
+    --export=ALL,MODEL_PATH=$MODEL,DATA_DIR=$SHARDROOT/shard${i},N_PROBLEMS=$NP,VAL_N=$VAL_N,MAX_PROMPT=$MAX_PROMPT,MAX_RESP=$MAX_RESP,MAX_TURNS=$MAX_TURNS,MAX_BATCHED=$MAX_BATCHED,HIST_LEN=8,TRUNCATION=left,NATIVE_MULTITURN=${NATIVE_MULTITURN:-True} \
     recipe/sod/slurm_sod_eval.sh 2>&1)
   echo "shard$i -> $N jid=$JID (N_PROBLEMS=$NP)"; submitted=$((submitted+1))
 done
