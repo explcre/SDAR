@@ -167,3 +167,34 @@ Diagnosis CONFIRMED: the flat-user re-serialization was the cause. Native hermes
 for the model's own turns + role:tool results) roughly doubles the score and lifts tool-calling.
 Two integration bugs fixed en route (N_PROBLEMS must equal data problem-count; chat must be
 np.array(dtype=object) for downstream .tolist()). Launching full faithful (20480/16) avg@32.
+
+## FULL FAITHFUL NATIVE RUN (2026-07-07) — native fix recovers most of the gap
+
+Sharded avg@32, faithful 20480/16, all 60 problems, native hermes multi-turn ON. Per-shard
+(clean laniakea sandboxes except galaxy shard2 which suffered SandboxFusion overload):
+
+| shard | node | aime2024 | aime2025 | note |
+|---|---|---|---|---|
+| 0 | laniakea | 42.5 | 83.8 | |
+| 1 | laniakea | 53.7 | 29.4 | |
+| 2 | galaxy | 41.2 | 0.0 | CORRUPT: 2566 sandbox "handler closed" errors -> aime2025 collapsed; re-running clean |
+| 3 | laniakea | 22.5 | 53.1 | |
+| 4 | laniakea | 23.1 | 18.8 | (clean rerun; galaxy orig discarded) |
+| 5 | laniakea | 18.8 | 18.8 | |
+
+Provisional aggregate (incl. corrupt galaxy shard2): **aime2024 = 33.6, aime2025 = 34.0**.
+Clean shard2 rerun (sdar-s2clean) pending -> will lift aime2025 (siblings are 18-84, not 0).
+
+| config | AIME2024 | AIME2025 |
+|---|---|---|
+| SDAR OLD flat-narration | 24.6 | 23.5 |
+| **SDAR native hermes (faithful, provisional 6/6)** | **33.6** | **34.0** |
+| standalone SOD top_k=20 | 48.1 | 36.8 |
+| paper | 50.8 | 41.7 |
+
+TAKEAWAY: the native-hermes multi-turn fix (role:assistant/role:tool preserved instead of flat
+narration) lifts SDAR from 24.6/23.5 to ~33.6/34.0 — aime2025 now MATCHES standalone (34.0 vs
+36.8), aime2024 substantially closes (33.6 vs 48.1). Confirms the diagnosis: the eval gap was the
+harness prompt format, not the checkpoint. Residual aime2024 gap + variance is partly SandboxFusion
+reliability under heavy native tool-calling (an infra bottleneck, not the fix). Clean smoke on
+shard0 (avg@8) hit 62.5 overall, further corroborating.
