@@ -18,12 +18,15 @@ SOURCES = ("aime2024", "aime2025")
 
 
 def extract(txt, source):
-    # 'val/aime2024_success_rate': np.float64(0.4)   OR  val/aime2024/test_score:0.400
-    for pat in (rf"val/{source}_success_rate'\s*:\s*np\.float64\(([0-9.eE+\-]+)\)",
+    # Prefer the FINAL compact summary line SDAR prints at the end (authoritative + always
+    # present for both sources); the metrics-dict `np.float64(...)` print is unreliable (it can
+    # omit one source's line, which silently mixed formats across shards). Use the LAST match.
+    for pat in (rf"val/{source}_success_rate\s*:\s*([0-9.eE+\-]+)",
+                rf"val/{source}_success_rate'\s*:\s*np\.float64\(([0-9.eE+\-]+)\)",
                 rf"val/{source}/test_score\s*[:=]\s*([0-9.eE+\-]+)"):
-        m = re.search(pat, txt)
+        m = re.findall(pat, txt)
         if m:
-            return float(m.group(1))
+            return float(m[-1])
     return None
 
 

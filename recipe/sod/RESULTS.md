@@ -222,3 +222,27 @@ waits for slowest), (3) serial sandbox round-trips. Same engine, different multi
 
 TRAINING (NOT run; estimates): SOD run_sod.sh (GRPO+step-wise OPD, Qwen3-4B teacher, 30K, 1 epoch
 ~469 steps) = 8x H20 96GB ~2-3 d (paper); voyager 4x H100 ~2-4 d; laniakea 6x 6000-Ada ~5-8 d.
+
+## FINAL CLEAN 6/6 (2026-07-07) — native hermes, faithful 20480/16 avg@32
+
+Galaxy-corrupted shard2 re-run on a clean laniakea sandbox (galaxy 41.2/0.0 -> CLEAN 68.1/1.9:
+the sandbox overload had HALVED aime2024; aime2025~2 is genuine — those 5 problems are just hard).
+
+Per-shard (clean): a24=[42.5,53.7,68.1,22.5,23.1,18.8] a25=[83.8,29.4,1.9,53.1,18.8,18.8]
+
+| config | AIME2024 | AIME2025 |
+|---|---|---|
+| SDAR OLD flat-narration | 24.6 | 23.5 |
+| **SDAR NATIVE hermes (clean 6/6)** | **38.1** | **34.3** |
+| standalone SOD top_k=20 | 48.1 | 36.8 |
+| paper | 50.8 | 41.7 |
+
+HEADLINE: the native-hermes multi-turn fix lifts SDAR from 24.6/23.5 -> 38.1/34.3. aime2025 reaches
+~93% of standalone (34.3 vs 36.8); aime2024 closes ~55% of the old gap (24.6->38.1 vs 48.1). Confirms
+the diagnosis definitively: the eval gap was the harness prompt format (flat-narration vs native
+role:assistant/role:tool), NOT the checkpoint. Residual gap to standalone is (a) env-step per-turn
+re-templating still isn't a single continuous vLLM sequence, (b) SandboxFusion reliability under load,
+(c) benchmark variance (30 problems/source; shard2's aime2025 problems are outlier-hard).
+
+Also fixed aggregate_sharded.py: prefer the final compact summary line (the np.float64 metric-dict
+print can omit one source, which silently undercounted the mean).
