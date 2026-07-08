@@ -207,15 +207,18 @@ numbers below are config estimates (see TRAINING_COMPARISON.md).
 MEASURED eval wall-clock:
 | eval | harness | hardware | time |
 |---|---|---|---|
-| standalone SOD, full AIME avg@32 (60 prob) | vLLM-native hermes, inline tools | 1x galaxy 3090 | ~1-2 h |
+| standalone SOD, full AIME avg@32 (60 prob) | vLLM (tool loop INSIDE one continuous generation, KV reused) | 1x galaxy 3090 | ~1-2 h |
 | SDAR smoke (bounded 8192/8, 4-10 prob) | env-step | 1 GPU | ~2-30 min |
 | SDAR faithful 20480/16 avg@32, 10 prob/shard | env-step | laniakea 6000-Ada | ~11 h/shard (11:10, 10:49) |
 | " | env-step | voyager H100 | ~3-4 h/shard |
 | " | env-step | galaxy 3090 | pathological 1d+ (sandbox overload) |
 | SDAR full 60 prob (6 shards parallel) | env-step | 6x laniakea | ~11 h wall-clock |
 
-KEY: SDAR env-step eval is ~5-10x SLOWER than SOD native-vLLM eval for the same task (re-templates
-transcript each turn -> low GPU util + per-turn sandbox round-trips vs one continuous vLLM sequence).
+KEY: BOTH harnesses use vLLM. SDAR is ~5-10x SLOWER not because of the engine but the ORCHESTRATION:
+SOD runs the tool loop INSIDE one continuous vLLM generation (KV cache reused, all rollouts batched,
+tool result spliced inline). SDAR calls vLLM generate_sequences ONCE PER TURN from a Python env-step
+loop -> (1) KV cache NOT reused (re-prefills the growing prompt each turn), (2) per-turn barrier (batch
+waits for slowest), (3) serial sandbox round-trips. Same engine, different multi-turn wrapper.
 
 TRAINING (NOT run; estimates): SOD run_sod.sh (GRPO+step-wise OPD, Qwen3-4B teacher, 30K, 1 epoch
 ~469 steps) = 8x H20 96GB ~2-3 d (paper); voyager 4x H100 ~2-4 d; laniakea 6x 6000-Ada ~5-8 d.
